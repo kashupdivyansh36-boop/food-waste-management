@@ -1,106 +1,79 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 
-st.set_page_config(page_title="Food Waste Dashboard", layout="wide")
+st.set_page_config(layout="wide")
 
-st.title("🍽️ Smart Food Waste Management Dashboard")
+st.title("🍽️ Food Sharing Marketplace")
 
-# ------------------ SESSION STATE ------------------
-if "data" not in st.session_state:
-    st.session_state.data = pd.DataFrame(columns=[
-        "Day", "Restaurant", "Food_Item", "Waste", "Donated", "Compost"
+# ---------------- SESSION ----------------
+if "food_data" not in st.session_state:
+    st.session_state.food_data = pd.DataFrame(columns=[
+        "Food", "Quantity", "Price", "Location"
     ])
 
-df = st.session_state.data
+if "requests" not in st.session_state:
+    st.session_state.requests = []
 
-# ------------------ SIDEBAR FILTER ------------------
-st.sidebar.header("⚙️ Filters")
+# ---------------- ROLE SELECT ----------------
+role = st.sidebar.selectbox("Select Role", ["Giver (Restaurant)", "Buyer (Needy)"])
 
-day_filter = st.sidebar.selectbox(
-    "Select Day",
-    ["All", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-)
+# ---------------- GIVER PANEL ----------------
+if role == "Giver (Restaurant)":
 
-filtered_df = df if day_filter == "All" else df[df["Day"] == day_filter]
+    st.header("🍽️ Add Leftover Food")
 
-# ------------------ METRICS ------------------
-col1, col2, col3 = st.columns(3)
+    with st.form("food_form"):
+        food = st.text_input("Food Name")
+        qty = st.number_input("Quantity (kg)", min_value=1)
+        price = st.number_input("Price (₹)", min_value=1)
+        location = st.text_input("Location")
 
-col1.metric("♻️ Total Waste", int(filtered_df["Waste"].sum()))
-col2.metric("🤝 Total Donated", int(filtered_df["Donated"].sum()))
-col3.metric("🌱 Total Compost", int(filtered_df["Compost"].sum()))
+        submit = st.form_submit_button("Add Food")
 
-# ------------------ CHART DATA (GROUPED) ------------------
-chart_df = filtered_df.groupby("Day")[["Waste", "Donated", "Compost"]].sum().reset_index()
+        if submit:
+            new_data = {
+                "Food": food,
+                "Quantity": qty,
+                "Price": price,
+                "Location": location
+            }
 
-# ------------------ BAR CHART ------------------
-st.subheader("📊 Waste Trend")
+            st.session_state.food_data = pd.concat(
+                [st.session_state.food_data, pd.DataFrame([new_data])],
+                ignore_index=True
+            )
 
-if not chart_df.empty:
-    fig = px.bar(chart_df, x="Day", y=["Waste", "Donated", "Compost"], barmode="group")
-    st.plotly_chart(fig, use_container_width=True)
+            st.success("✅ Food Added!")
+
+    st.subheader("📋 Available Food")
+    st.dataframe(st.session_state.food_data)
+
+# ---------------- BUYER PANEL ----------------
+elif role == "Buyer (Needy)":
+
+    st.header("🙋‍♂️ Available Food")
+
+    df = st.session_state.food_data
+
+    if df.empty:
+        st.info("No food available")
+    else:
+        for i, row in df.iterrows():
+            col1, col2, col3, col4 = st.columns(4)
+
+            col1.write(f"🍛 {row['Food']}")
+            col2.write(f"📦 {row['Quantity']} kg")
+            col3.write(f"💰 ₹{row['Price']}")
+            col4.write(f"📍 {row['Location']}")
+
+            if st.button(f"Request {row['Food']}", key=i):
+                st.session_state.requests.append(row.to_dict())
+                st.success("✅ Request Sent!")
+
+# ---------------- ADMIN PANEL ----------------
+st.sidebar.subheader("📊 Requests")
+
+if st.session_state.requests:
+    st.sidebar.write(st.session_state.requests)
 else:
-    st.info("No data available")
-
-# ------------------ PIE CHART ------------------
-st.subheader("🥧 Distribution")
-
-pie_data = pd.DataFrame({
-    "Category": ["Waste", "Donated", "Compost"],
-    "Value": [
-        filtered_df["Waste"].sum(),
-        filtered_df["Donated"].sum(),
-        filtered_df["Compost"].sum()
-    ]
-})
-
-fig_pie = px.pie(pie_data, names="Category", values="Value", hole=0.4)
-st.plotly_chart(fig_pie, use_container_width=True)
-
-# ------------------ FORM ------------------
-st.subheader("📦 Add New Entry")
-
-with st.form("form"):
-    col1, col2 = st.columns(2)
-
-    with col1:
-        day = st.selectbox("Day", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
-        restaurant = st.text_input("Restaurant Name")
-
-    with col2:
-        food = st.text_input("Food Item")
-        category = st.selectbox("Category", ["Waste", "Donated", "Compost"])
-
-    quantity = st.number_input("Quantity (kg)", min_value=1)
-
-    submit = st.form_submit_button("Add Data")
-
-    if submit:
-        new_data = {
-            "Day": day,
-            "Restaurant": restaurant,
-            "Food_Item": food,
-            "Waste": 0,
-            "Donated": 0,
-            "Compost": 0
-        }
-
-        new_data[category] = quantity
-
-        st.session_state.data = pd.concat(
-            [st.session_state.data, pd.DataFrame([new_data])],
-            ignore_index=True
-        )
-
-        st.success("✅ Entry Added")
-        st.rerun()
-
-# ------------------ TABLE ------------------
-st.subheader("📋 Data Table")
-st.dataframe(st.session_state.data, use_container_width=True)
-
-# ------------------ CLEAR BUTTON ------------------
-if st.button("🗑️ Clear All Data"):
-    st.session_state.data = pd.DataFrame(columns=df.columns)
-    st.rerun()
+    st.sidebar.write("No requests yet")
